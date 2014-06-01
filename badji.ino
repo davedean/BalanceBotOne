@@ -33,9 +33,9 @@ const int BIN2 = 11;  // (pwm) pin 11 connected to pin BIN2
 int speed;
  
 // PID
-const float Kp = 45;
+const float Kp = 15;
 const float Ki = 0;
-const float Kd = -2;
+const float Kd = 0;
 float pTerm, iTerm, dTerm, integrated_error, last_error, error;
 const float K = 1.9*1.12;
 #define   GUARD_GAIN   10.0
@@ -78,7 +78,7 @@ void setup() {
 }
  
 void loop() {
-  runEvery(25)  // run code @ 40 Hz
+  runEvery(1)  // run code @ 40 Hz
   {
     dof();
     if (CurrentAngle <= 180.2 && CurrentAngle >= 179.8)
