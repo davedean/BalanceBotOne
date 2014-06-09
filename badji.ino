@@ -33,7 +33,7 @@ const int BIN2 = 11;  // (pwm) pin 11 connected to pin BIN2
 int speed;
  
 // PID
-const float Kp = 15;
+const float Kp = 4;
 const float Ki = 0;
 const float Kd = 0;
 float pTerm, iTerm, dTerm, integrated_error, last_error, error;
@@ -78,7 +78,7 @@ void setup() {
 }
  
 void loop() {
-  runEvery(1)  // run code @ 40 Hz
+  runEvery(20)  // run code @ 40 Hz
   {
     dof();
     if (CurrentAngle <= 180.2 && CurrentAngle >= 179.8)
