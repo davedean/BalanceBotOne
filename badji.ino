@@ -1,12 +1,10 @@
-// http://www.bajdi.com
-// Self balancing bot:
-// µController = ATmega328
-// 2 Pololu micro metal gear motors with 60mm wheels + DRV8833 motor controller
-// 6DOF MPU6050 sensor
+// https://anthropomorphist.wordpress.com/
+// Self Balancing Bot
+// Based on code from http://bajdi.com and various other sources
  
 #include <Wire.h>
 #include "Kalman.h" // Source: https://github.com/TKJElectronics/KalmanFilter
-#include "I2Cdev.h"
+#include "I2Cdev.h"  
 #include "MPU6050.h"
  
 Kalman kalmanX; // Create the Kalman instance
@@ -33,15 +31,17 @@ const int BIN2 = 11;  // (pwm) pin 11 connected to pin BIN2
 int speed;
  
 // PID
-const float Kp = 4;
+const float Kp = 13; // 13 seems stable
 const float Ki = 0;
 const float Kd = 0;
 float pTerm, iTerm, dTerm, integrated_error, last_error, error;
-const float K = 1.9*1.12;
-#define   GUARD_GAIN   10.0
- 
-#define runEvery(t) for (static typeof(t) _lasttime;(typeof(t))((typeof(t))millis() - _lasttime) > (t);_lasttime += (t))
- 
+const float K =  1.9*1.12; // ?? I don't know how this was decided?
+float setPoint = 182;
+float variance = .1;
+
+#define   GUARD_GAIN  10.0 // limits Ki   
+#define runEvery(t) for (static typeof(t) _lasttime;(typeof(t))((typeof(t))millis() - _lasttime) > (t);_lasttime += (t)) // ??
+  
  
 void setup() { 
   pinMode(AIN1, OUTPUT); // set pins to output
@@ -73,35 +73,29 @@ void setup() {
   accXangle = (atan2(accY,accZ)+PI)*RAD_TO_DEG;
  
   kalmanX.setAngle(accXangle); // Set starting angle
-  gyroXangle = accXangle;
+  gyroXangle = accXangle; 
+   
   timer = micros();
 }
  
 void loop() {
-  runEvery(20)  // run code @ 40 Hz
+  runEvery(5)  // 25 = run code @ 40 Hz 
   {
     dof();
-    if (CurrentAngle <= 180.2 && CurrentAngle >= 179.8)
+   
+    if ((CurrentAngle <= (setPoint+variance)) && (CurrentAngle >= (setPoint-variance)))
     {
-      Serial.print(F("stopping"));
       stop();
     }
     else{
-    if (CurrentAngle < 230 && CurrentAngle > 130)
-    {
-      Serial.print(F("angle high/low"));
-    Pid();
-    Motors();
+      Pid();
+      Motors();
     }
-    else
-    {
-      stop();
-    }
-  }
   }
 }
  
 void Motors(){
+  
   if (speed > 0)
   {
     //forward
@@ -113,7 +107,7 @@ void Motors(){
   else
   {
     // backward
-    speed = map(speed,0,-255,0,255);
+    speed = abs(speed);
     analogWrite(AIN1, 0);
     analogWrite(AIN2, speed);
     analogWrite(BIN1, 0);
@@ -130,7 +124,7 @@ void stop()
 }
  
 void Pid(){
-  error = 180 - CurrentAngle;  // 180 = level
+  error = setPoint - CurrentAngle;  // setPoint = level
   pTerm = Kp * error;
   integrated_error += error;
   iTerm = Ki * constrain(integrated_error, -GUARD_GAIN, GUARD_GAIN);
@@ -149,8 +143,16 @@ void dof()
   gyroX = ((i2cData[8] << 8) | i2cData[9]);
   gyroY = ((i2cData[10] << 8) | i2cData[11]);
   gyroZ = ((i2cData[12] << 8) | i2cData[13]);
-  accXangle = (atan2(accY,accZ)+PI)*RAD_TO_DEG;
-  double gyroXrate = (double)gyroX/131.0;
-  CurrentAngle = kalmanX.getAngle(accXangle, gyroXrate, (double)(micros()-timer)/1000000);
+  
+  // get the X angle
+  accXangle = (atan2(accY,accZ)+PI)*RAD_TO_DEG; 
+  
+  // get the gyroXrate in degrees per second
+  
+//  double gyroRate = (gyroX-gyroXangle)/1.0323; // 1.0323 is MPU6050 sensitivity 
+  double gyroXrate = (double)gyroX/131.00; // use timer value?
+  
+  // The angle should be in degrees and the rate should be in degrees per second and the delta time in seconds
+  CurrentAngle = kalmanX.getAngle(accXangle, gyroXrate, (double)(micros()-timer)/1000000);  
   timer = micros();
 }
