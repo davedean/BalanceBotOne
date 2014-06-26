@@ -19,7 +19,7 @@ const float K =  1; // multiplier
 const float Kp = 11; 
 const float Ki = 0;
 const float Kd = 0;
-float setPoint = 0;
+float setPoint = -5;
 float deadZone = 1;  // shut off motors if this close in degrees to setpoint
 float minSpeed = 10;
 float maxAngle = 50; // shut off motors if leaning more than this 
@@ -96,7 +96,7 @@ void setup() {
  
 void loop() {
   
-  runEvery(15)
+  runEvery(5)
   {
   
     updateMPU6050();
