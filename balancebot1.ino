@@ -10,18 +10,21 @@
 
 // DEFINES: #####
 #define RESTRICT_PITCH // Comment out to restrict roll to ±90deg instead - please read: http://www.freescale.com/files/sensors/doc/app_note/AN3461.pdf
-#define   GUARD_GAIN  10.0 // limits Ki   
+#define   GUARD_GAIN  50.0 // limits Ki to this value
 #define runEvery(t) for (static typeof(t) _lasttime;(typeof(t))((typeof(t))millis() - _lasttime) > (t);_lasttime += (t)) // ??
   
 // USER PARAMS: #####
 // PID
-const float Kp = 13; // 13 seems stableish
+const float K =  1; // multiplier
+const float Kp = 11; 
 const float Ki = 0;
 const float Kd = 0;
-float pTerm, iTerm, dTerm, integrated_error, last_error, error;
-const float K =  1.9*1.12; // ?? I don't know how this was decided?
-float setPoint = 182;
-float variance = .1;
+float setPoint = 0;
+float deadZone = 1;  // shut off motors if this close in degrees to setpoint
+float minSpeed = 10;
+float maxAngle = 50; // shut off motors if leaning more than this 
+
+float pTerm, iTerm, dTerm, integrated_error, last_error, error = 0;
 
 // Motor controller pins
 const int AIN1 = 3;  // (pwm) pin 3 connected to pin AIN1
@@ -45,13 +48,13 @@ double accXangle;// Angle calculate using the accelerometer
 double gyroXangle;// Angle calculate using the gyro
 double kalAngleX;// Calculate the angle using a Kalman filter
 double compAngleX; // Calculated angle using a complementary filter
-
+float CurrentAngle;
 
 uint32_t timer;      // unsigned long timer;
 uint8_t i2cData[14]; // Buffer for I2C data
-float CurrentAngle;
- 
+
 int speed;
+int pid;
  
 
 
@@ -88,95 +91,110 @@ void setup() {
   kalmanX.setAngle(accXangle); // Set starting angle
   gyroXangle = accXangle;      // Set gyro to same angle as accelerometer
    
-  timer = micros();            // Initialie the timer
+  timer = micros();            // Initialize the timer
 }
  
 void loop() {
   
-  updateMPU6050();
+  runEvery(15)
+  {
   
-  double dt = (double)(micros() - timer) / 1000000; // Calculate delta time
-  timer = micros();
-  updateRoll();
+    updateMPU6050();
   
+    double dt = (double)(micros() - timer) / 1000000; // Calculate delta time
+    timer = micros();
+    updateRoll();
   
-  double gyroXrate = gyroX / 131.0; // Convert to deg/s 131 is a magic number to me for now.
+    double gyroXrate = gyroX / 131.0; // Convert to deg/s 131 is a magic number to me for now.
+
+    // This fixes the transition problem when the accelerometer angle jumps between -180 and 180 degrees
+    //if ((accXangle < -90 && kalAngleX > 90) || (accXangle > 90 && kalAngleX < -90)) {
+    //  kalmanX.setAngle(accXangle);
+    //  compAngleX = accXangle;
+    //  kalAngleX = accXangle;
+    //  gyroXangle = accXangle;
+    //} else
+      kalAngleX = kalmanX.getAngle(accXangle, gyroXrate, dt); // Calculate the angle using a Kalman filter
   
-#ifdef RESTRICT_PITCH
-  // This fixes the transition problem when the accelerometer angle jumps between -180 and 180 degrees
-  if ((accXangle < -90 && kalAngleX > 90) || (accXangle > 90 && kalAngleX < -90)) {
-    kalmanX.setAngle(accXangle);
-    compAngleX = accXangle;
-    kalAngleX = accXangle;
-    gyroXangle = accXangle;
-  } else
-    kalAngleX = kalmanX.getAngle(accXangle, gyroXrate, dt); // Calculate the angle using a Kalman filter
+    /* Estimate angles using gyro only */
+    //gyroXangle += gyroXrate * dt; // Calculate gyro angle without any filter
+
+    /* Estimate angles using complimentary filter */
+    //compAngleX = 0.93 * (compAngleX + gyroXrate * dt) + 0.07 * accXangle; // Calculate the angle using a Complimentary filter
+
+    // Reset the gyro angles when they has drifted too much
+    //if (gyroXangle < -180 || gyroXangle > 180)
+    //  gyroXangle = kalAngleX;
+ 
+    // The angle should be in degrees and the rate should be in degrees per second and the delta time in seconds
+    //CurrentAngle = compAngleX;
+    CurrentAngle = kalAngleX;
     
-#else
-  // This fixes the transition problem when the accelerometer angle jumps between -180 and 180 degrees
-  if ((pitch < -90 && kalAngleY > 90) || (pitch > 90 && kalAngleY < -90)) {
-    kalmanY.setAngle(pitch);
-    compAngleY = pitch;
-    kalAngleY = pitch;
-    gyroYangle = pitch;
-  } else
-    kalAngleY = kalmanY.getAngle(pitch, gyroYrate, dt); // Calculate the angle using a Kalman filter
-
-  if (abs(kalAngleY) > 90)
-    gyroXrate = -gyroXrate; // Invert rate, so it fits the restricted accelerometer reading
-  kalAngleX = kalmanX.getAngle(accXangle, gyroXrate, dt); // Calculate the angle using a Kalman filter
-#endif
+    Serial.print("\t");
+    Serial.print(accXangle);
+    Serial.print("\t");
+    Serial.print(gyroXrate);
+    Serial.print("\t");
+    Serial.print(dt);
+    
+    Serial.print("\t");
+    Serial.print(CurrentAngle);
 
   
-  /* Estimate angles using gyro only */
-  gyroXangle += gyroXrate * dt; // Calculate gyro angle without any filter
-  //gyroXangle += kalmanX.getRate() * dt; // Calculate gyro angle using the unbiased rate from the Kalman filter
-
-  /* Estimate angles using complimentary filter */
-  compAngleX = 0.93 * (compAngleX + gyroXrate * dt) + 0.07 * accXangle; // Calculate the angle using a Complimentary filter
-
-  // Reset the gyro angles when they has drifted too much
-  if (gyroXangle < -180 || gyroXangle > 180)
-    gyroXangle = kalAngleX;
-  
-  
-  // Tie it all together! 
-  
-  // The angle should be in degrees and the rate should be in degrees per second and the delta time in seconds
-  CurrentAngle = kalmanX.getAngle(accXangle, gyroXrate, (double)(micros()-timer)/1000000);  
-   
-  if ((CurrentAngle <= (setPoint+variance)) && (CurrentAngle >= (setPoint-variance)))
-  {
-    stop();
-  } 
-  else 
-  {
-    Pid();
-    Motors();
+    
+    if ((CurrentAngle <=-maxAngle) || (CurrentAngle>=maxAngle))
+    {
+      stop();
+    }
+    else
+    {
+      if (deadZone>=abs(CurrentAngle-setPoint))
+      {
+        stop();
+        Serial.print("\taction: stop");
+      } 
+      else 
+      {
+        Pid();
+        Motors();
+      }
+    } // overtilt protection
+     Serial.print("\n");
   }
-  
   // End Loop
 }
  
 void Motors(){
+    
+  speed = K*pid;
+   
+  // if speed is less than minSpeed, make it minSpeed
+  if ((speed>0) && (speed<minSpeed)) speed = minSpeed;
+  if ((speed<0) && (speed>-minSpeed)) speed = -minSpeed;
+   
+  speed = constrain(speed, -255, 255);
+  Serial.print("\tspeed:");
+  Serial.print(speed); 
+
   
   if (speed > 0)
   {
     //forward
+    analogWrite(AIN1, 0);
+    analogWrite(AIN2, speed);
+    analogWrite(BIN1, 0);
+    analogWrite(BIN2, speed);
+   }
+  else
+  {
+    // backward
+    speed = abs(speed);
     analogWrite(AIN1, speed);
     analogWrite(AIN2, 0);
     analogWrite(BIN1, speed);
     analogWrite(BIN2, 0);
   }
-  else
-  {
-    // backward
-    speed = abs(speed);
-    analogWrite(AIN1, 0);
-    analogWrite(AIN2, speed);
-    analogWrite(BIN1, 0);
-    analogWrite(BIN2, speed);
-  }
+ 
 }
  
 void stop()
@@ -194,10 +212,9 @@ void Pid(){
   iTerm = Ki * constrain(integrated_error, -GUARD_GAIN, GUARD_GAIN);
   dTerm = Kd * (error - last_error);
   last_error = error;
-  
-  // This is WAY too simplistic 
-  // Adding the terms and multiplying them by K
-  speed = constrain(K*(pTerm + iTerm + dTerm), -255, 255);
+  pid = pTerm + iTerm + dTerm;  
+  Serial.print("\t");
+  Serial.print(pid);
 }
  
 
