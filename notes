@@ -1,4 +1,0 @@
-so the PID section needs love:
-- should calculate the raw PID value (p + i + d)
-- then scale that in the "motor" section maybe
-- can apply a scaling range so the power levels are more controllable
