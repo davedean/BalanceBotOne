@@ -16,13 +16,13 @@
 // USER PARAMS: #####
 // PID
 const float K =  1; // multiplier
-const float Kp = 11; 
+const float Kp = 25; 
 const float Ki = 0;
 const float Kd = 0;
 float setPoint = -5;
 float deadZone = 1;  // shut off motors if this close in degrees to setpoint
 float minSpeed = 10;
-float maxAngle = 50; // shut off motors if leaning more than this 
+float maxAngle = 40; // shut off motors if leaning more than this 
 
 float pTerm, iTerm, dTerm, integrated_error, last_error, error = 0;
 
@@ -144,7 +144,9 @@ void loop() {
     
     if ((CurrentAngle <=-maxAngle) || (CurrentAngle>=maxAngle))
     {
+      //break;
       stop();
+      while(1);
     }
     else
     {
