@@ -18,11 +18,11 @@
 const float K =  1; // multiplier
 const float Kp = 25; 
 const float Ki = 0;
-const float Kd = 0;
-float setPoint = -5;
-float deadZone = 1;  // shut off motors if this close in degrees to setpoint
-float minSpeed = 10;
-float maxAngle = 40; // shut off motors if leaning more than this 
+const float Kd = 2;
+float setPoint = -3;
+float deadZone = .5;  // shut off motors if this close in degrees to setpoint
+float minSpeed = 20;
+float maxAngle = 35; // shut off motors if leaning more than this 
 
 float pTerm, iTerm, dTerm, integrated_error, last_error, error = 0;
 
